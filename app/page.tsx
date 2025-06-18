@@ -12,7 +12,7 @@ import {
   enrichStargazers,
 } from "@/services/githubServices";
 
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, AlertCircle } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -21,114 +21,234 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { cn } from "@/lib/utils";
+
+interface Stargazer {
+  login: string;
+  starred_at: string;
+  [key: string]: any;
+}
 
 export default function Home() {
   const [repoUrl, setRepoUrl] = useState("");
   const [githubTokens, setGithubTokens] = useState("");
   const [showTokens, setShowTokens] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [stargazers, setStargazers] = useState<any[]>([]);
+  const [stargazers, setStargazers] = useState<Stargazer[]>([]);
   const [last24Hours, setLast24Hours] = useState<boolean>(false);
   const [hasFetched, setHasFetched] = useState(false);
+  const [error, setError] = useState<string>("");
 
-  const handleFetchStargazers = async (last24Hours = false) => {
-    if (!repoUrl || !githubTokens) {
-      alert("Invalid GitHub repository URL or token");
+  // Validate GitHub URL
+  const isValidGitHubUrl = (url: string): boolean => {
+    const githubUrlPattern = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/;
+    return githubUrlPattern.test(url.trim());
+  };
+
+  // Validate GitHub tokens
+  const isValidGitHubTokens = (tokens: string): boolean => {
+    if (!tokens.trim()) return false;
+    const tokenArray = tokens.split(',').map(token => token.trim());
+    // Basic validation for GitHub token format (starts with ghp_, gho_, ghs_, etc.)
+    const tokenPattern = /^gh[ops]_[A-Za-z0-9_]{36,}$/;
+    return tokenArray.every(token => tokenPattern.test(token));
+  };
+
+  const handleFetchStargazers = async (fetchLast24Hours = false) => {
+    // Clear previous error
+    setError("");
+    
+    // Validation
+    if (!repoUrl.trim()) {
+      setError("Please enter a GitHub repository URL");
       return;
     }
+
+    if (!isValidGitHubUrl(repoUrl)) {
+      setError("Please enter a valid GitHub repository URL (e.g., https://github.com/owner/repo)");
+      return;
+    }
+
+    if (!githubTokens.trim()) {
+      setError("Please enter your GitHub personal access token(s)");
+      return;
+    }
+
+    if (!isValidGitHubTokens(githubTokens)) {
+      setError("Please enter valid GitHub personal access token(s). Tokens should start with 'ghp_', 'gho_', or 'ghs_'");
+      return;
+    }
+
     setLoading(true);
     setHasFetched(false);
+    setLast24Hours(fetchLast24Hours);
 
     try {
-      const repoPath = extractRepoPath(repoUrl);
-      if (!repoPath) throw new Error("Invalid repository URL");
-      let stargazers = await fetchAllStargazers(repoPath, githubTokens);
+      const repoPath = extractRepoPath(repoUrl.trim());
+      if (!repoPath) {
+        throw new Error("Unable to extract repository path from URL");
+      }
 
-      if (last24Hours) {
+      let stargazersData = await fetchAllStargazers(repoPath, githubTokens.trim());
+
+      if (fetchLast24Hours) {
         const last24hTimestamp = new Date();
-        last24hTimestamp.setDate(last24hTimestamp.getDate() - 1);
-        stargazers = stargazers.filter(
-          (star) => new Date(star.starred_at) >= last24hTimestamp
+        last24hTimestamp.setHours(last24hTimestamp.getHours() - 24);
+        stargazersData = stargazersData.filter(
+          (star: Stargazer) => new Date(star.starred_at) >= last24hTimestamp
         );
       }
 
-      const enrichedStargazers = await enrichStargazers(stargazers, githubTokens);
+      const enrichedStargazers = await enrichStargazers(stargazersData, githubTokens.trim());
       setStargazers(enrichedStargazers);
-    } catch (error) {
-      console.error(error);
-      alert("Error fetching stargazers");
+      
+      if (enrichedStargazers.length === 0) {
+        setError(fetchLast24Hours ? 
+          "No stargazers found in the last 24 hours" : 
+          "This repository has no stargazers yet");
+      }
+    } catch (error: any) {
+      console.error("Error fetching stargazers:", error);
+      
+      // Provide more specific error messages
+      if (error.message?.includes('404')) {
+        setError("Repository not found. Please check the URL and ensure the repository exists and is public.");
+      } else if (error.message?.includes('401') || error.message?.includes('403')) {
+        setError("Authentication failed. Please check your GitHub token and ensure it has the necessary permissions.");
+      } else if (error.message?.includes('rate limit')) {
+        setError("GitHub API rate limit exceeded. Please try again later or use multiple tokens.");
+      } else {
+        setError(error.message || "An error occurred while fetching stargazers. Please try again.");
+      }
     } finally {
       setLoading(false);
       setHasFetched(true);
     }
   };
 
-  return (
-    <div className="flex flex-col items-center justify-center h-screen w-screen bg-[#0D1117]">
-      <Card className="w-[500px] flex flex-col items-center p-6 bg-[#161B22]">
-        <CardHeader>
-          <CardTitle className="text-[#C9D1D9] text-3xl">GitHub Stargazers Data</CardTitle>
-        </CardHeader>
-        <CardContent className="w-[500px]">
-          <form>
-            <div className="grid w-full items-center gap-4">
-              <div className="flex flex-col space-y-1.5">
-                <Label htmlFor="name" className="text-[#C9D1D9]">Github Repository URL</Label>
-                <Input
-                  type="text"
-                  placeholder="Enter GitHub Repository URL (e.g., https://github.com/owner/repo)"
-                  value={repoUrl}
-                  onChange={(e) => setRepoUrl(e.target.value)}
-                  className="border p-2 mb-2 w-full max-w-md bg-[#0D1117] text-white"
-                />
-              </div>
-              <div className="flex flex-col space-y-1.5">
-                <Label htmlFor="name" className="text-[#C9D1D9]">Your Personal Tokens</Label>
-                <div className="relative w-full max-w-md">
-                  <Input
-                    type={showTokens ? "text" : "password"}
-                    placeholder="Enter GitHub Tokens (comma-separated, at least one required e.g., ghp_token1, ghp_token2)"
-                    value={githubTokens}
-                    onChange={(e) => setGithubTokens(e.target.value)}
-                    className="border p-2 w-full bg-[#0D1117] text-white"
-                  />
-                  <button
-                    type="button"
-                    className="absolute inset-y-0 right-2 flex items-center"
-                    onClick={() => setShowTokens(!showTokens)}
-                  >
-                    {showTokens ? <Eye size={20} className="text-white"  /> : <EyeOff size={20} className="text-white" />}
-                  </button>
-                </div>
-              </div>
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleFetchStargazers(false);
+  };
+
+ return (
+  <div className="relative flex flex-col items-center justify-center min-h-screen w-screen overflow-hidden bg-black px-4 py-8">
+    {/* Grid background */}
+    <div
+      className={cn(
+        "absolute inset-0 z-0",
+        "[background-size:40px_40px]",
+        "[background-image:linear-gradient(to_right,#262626_1px,transparent_1px),linear-gradient(to_bottom,#262626_1px,transparent_1px)]"
+      )}
+    />
+
+    {/* Radial fade mask */}
+    <div className="pointer-events-none absolute inset-0 z-10 bg-black [mask-image:radial-gradient(ellipse_at_center,transparent_20%,black)]" />
+
+    {/* Main Card */}
+    <Card className="z-20 w-full max-w-xl flex flex-col items-center bg-[#161B22] border border-gray-700 shadow-xl rounded-2xl p-6">
+      <CardHeader className="text-center mb-2">
+        <CardTitle className="text-[#C9D1D9] text-3xl font-semibold">
+          GitHub Stargazers Data
+        </CardTitle>
+      </CardHeader>
+
+      <CardContent className="w-full">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Repo URL */}
+          <div className="space-y-1.5">
+            <Label htmlFor="repoUrl" className="text-[#C9D1D9]">
+              GitHub Repository URL
+            </Label>
+            <Input
+              id="repoUrl"
+              type="text"
+              placeholder="https://github.com/owner/repo"
+              value={repoUrl}
+              onChange={(e) => setRepoUrl(e.target.value)}
+              className="bg-[#0D1117] text-white border border-gray-600 focus:border-green-500"
+              disabled={loading}
+            />
+          </div>
+
+          {/* GitHub Token */}
+          <div className="space-y-1.5">
+            <Label htmlFor="githubTokens" className="text-[#C9D1D9]">
+              GitHub Personal Access Token(s)
+            </Label>
+            <div className="relative">
+              <Input
+                id="githubTokens"
+                type={showTokens ? "text" : "password"}
+                placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                value={githubTokens}
+                onChange={(e) => setGithubTokens(e.target.value)}
+                className="bg-[#0D1117] text-white border border-gray-600 focus:border-green-500 pr-10"
+                disabled={loading}
+              />
+              <button
+                type="button"
+                onClick={() => setShowTokens(!showTokens)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition"
+                disabled={loading}
+              >
+                {showTokens ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
             </div>
-          </form>
-        </CardContent>
-        <CardFooter className="flex flex-col items-center space-y-4 w-[500px]">
+          </div>
+        </form>
+      </CardContent>
+
+      <CardFooter className="flex flex-col items-center w-full mt-4 space-y-4">
+        {/* Error */}
+        {error && (
+          <Alert className="w-full bg-red-900/20 border border-red-700 text-sm">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="text-red-400">{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* Buttons */}
+        <div className="flex flex-col w-full space-y-2">
           <Button
             onClick={() => handleFetchStargazers(false)}
-            className="bg-green-500 text-white p-2 w-full"
+            className="w-full bg-green-600 hover:bg-green-700 text-white"
+            disabled={loading}
           >
-            Fetch Stargazers
+            {loading && !last24Hours ? "Fetching..." : "Fetch All Stargazers"}
           </Button>
           <Button
             onClick={() => handleFetchStargazers(true)}
-            className="bg-green-500 text-white p-2 w-full"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            disabled={loading}
           >
-            Fetch Last 24H
+            {loading && last24Hours ? "Fetching..." : "Fetch Last 24 Hours"}
           </Button>
-        </CardFooter>
+        </div>
+
+        {/* Loading */}
         {loading && <Loading />}
-        {hasFetched && stargazers.length > 0 ? (
-          <DataExport
-            stargazers={stargazers}
-            last24Hours={last24Hours}
-            setLast24Hours={setLast24Hours}
-          />
-        ) : hasFetched && !loading ? (
-          <p className="mt-4 text-gray-500">No data available</p>
-        ) : null}
-      </Card>
-    </div>
-  );
+
+        {/* Export or Message */}
+        {hasFetched && stargazers.length > 0 && (
+          <div className="w-full mt-4">
+            <DataExport
+              stargazers={stargazers}
+              last24Hours={last24Hours}
+              setLast24Hours={setLast24Hours}
+            />
+            <p className="text-center text-gray-400 mt-2">Here You Go!</p>
+          </div>
+        )}
+
+        {hasFetched && stargazers.length === 0 && !loading && !error && (
+          <p className="mt-4 text-sm text-gray-500 text-center">
+            No stargazers found{last24Hours ? " in the last 24 hours" : ""}
+          </p>
+        )}
+      </CardFooter>
+    </Card>
+  </div>
+);
 }
