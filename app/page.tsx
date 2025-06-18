@@ -40,26 +40,26 @@ export default function Home() {
   const [hasFetched, setHasFetched] = useState(false);
   const [error, setError] = useState<string>("");
 
-  // Validate GitHub URL
+
   const isValidGitHubUrl = (url: string): boolean => {
     const githubUrlPattern = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/;
     return githubUrlPattern.test(url.trim());
   };
 
-  // Validate GitHub tokens
+
   const isValidGitHubTokens = (tokens: string): boolean => {
     if (!tokens.trim()) return false;
     const tokenArray = tokens.split(',').map(token => token.trim());
-    // Basic validation for GitHub token format (starts with ghp_, gho_, ghs_, etc.)
+
     const tokenPattern = /^gh[ops]_[A-Za-z0-9_]{36,}$/;
     return tokenArray.every(token => tokenPattern.test(token));
   };
 
   const handleFetchStargazers = async (fetchLast24Hours = false) => {
-    // Clear previous error
+
     setError("");
     
-    // Validation
+
     if (!repoUrl.trim()) {
       setError("Please enter a GitHub repository URL");
       return;
@@ -111,7 +111,7 @@ export default function Home() {
     } catch (error: any) {
       console.error("Error fetching stargazers:", error);
       
-      // Provide more specific error messages
+
       if (error.message?.includes('404')) {
         setError("Repository not found. Please check the URL and ensure the repository exists and is public.");
       } else if (error.message?.includes('401') || error.message?.includes('403')) {
@@ -134,7 +134,7 @@ export default function Home() {
 
  return (
   <div className="relative flex flex-col items-center justify-center min-h-screen w-screen overflow-hidden bg-black px-4 py-8">
-    {/* Grid background */}
+
     <div
       className={cn(
         "absolute inset-0 z-0",
@@ -143,10 +143,8 @@ export default function Home() {
       )}
     />
 
-    {/* Radial fade mask */}
     <div className="pointer-events-none absolute inset-0 z-10 bg-black [mask-image:radial-gradient(ellipse_at_center,transparent_20%,black)]" />
 
-    {/* Main Card */}
     <Card className="z-20 w-full max-w-xl flex flex-col items-center bg-[#161B22] border border-gray-700 shadow-xl rounded-2xl p-6">
       <CardHeader className="text-center mb-2">
         <CardTitle className="text-[#C9D1D9] text-3xl font-semibold">
@@ -156,7 +154,6 @@ export default function Home() {
 
       <CardContent className="w-full">
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Repo URL */}
           <div className="space-y-1.5">
             <Label htmlFor="repoUrl" className="text-[#C9D1D9]">
               GitHub Repository URL
@@ -172,7 +169,6 @@ export default function Home() {
             />
           </div>
 
-          {/* GitHub Token */}
           <div className="space-y-1.5">
             <Label htmlFor="githubTokens" className="text-[#C9D1D9]">
               GitHub Personal Access Token(s)
@@ -209,7 +205,7 @@ export default function Home() {
           </Alert>
         )}
 
-        {/* Buttons */}
+        
         <div className="flex flex-col w-full space-y-2">
           <Button
             onClick={() => handleFetchStargazers(false)}
@@ -227,10 +223,10 @@ export default function Home() {
           </Button>
         </div>
 
-        {/* Loading */}
+       
         {loading && <Loading />}
 
-        {/* Export or Message */}
+       
         {hasFetched && stargazers.length > 0 && (
           <div className="w-full mt-4">
             <DataExport
